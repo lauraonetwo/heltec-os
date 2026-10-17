@@ -10,7 +10,10 @@ python scripts/validate_build.py build/output
 python -m unittest discover -s scripts -p "test_*.py"
 g++ -std=c++17 -Wall -Wextra -Werror tests/ota_protocol_test.cpp -o build/ota-protocol-tests
 build/ota-protocol-tests
-python scripts/ota_release.py sign --tag v1.1.0
+g++ -std=c++17 -Wall -Wextra -Werror tests/morse_test.cpp -o build/morse-tests
+build/morse-tests
+node tests/messages_page_test.js
+python scripts/ota_release.py sign --tag v1.2.0
 python scripts/ota_release.py verify build/release
 ```
 
@@ -26,7 +29,8 @@ emulate the radio, PRG button, OLED or flash power-loss behavior.
 Perform these checks after the initial USB installation. They require a physical board and router;
 a successful compile alone does not establish that they have passed.
 
-- Boot: `hi user!`, followed by exactly `WiFi`, `Update system`, `About`.
+- Boot: `hi user!`, followed by `WiFi`, `Messages`, `Update system`, `About` in a scrolling menu.
+- Messages: perform the [phone/board/LED checks](messages.md#hardware-acceptance-checks).
 - Button: short presses advance one item; a 0.7-second hold selects only on release. Holding for
   several seconds does not repeat. A button held during normal software startup causes no false selection.
 - Layout: all three main entries fit the OLED; lists scroll and Back remains reachable.
@@ -45,7 +49,7 @@ a successful compile alone does not establish that they have passed.
 - Form safety: use an SSID containing quotes or `<` and `&`; the full SSID must display as text.
   An invalid setup token must be rejected, and requests through the router-side IP must be rejected.
 - Disconnection: turn off and restore the router; confirm automatic reconnection and responsive controls.
-- About: verify version 1.1.0, Heltec V3.2 / ESP32-S3 and 8 MB flash.
+- About: verify version 1.2.0, Heltec V3.2 / ESP32-S3 and 8 MB flash.
 - Update system: with no release, expect `No OTA release yet`. With the same version published,
   expect `System is up to date`. Offline checks must report `Connect WiFi first`.
 - New release: publish a signed higher version and verify it is displayed. Back is selected initially;
@@ -90,3 +94,19 @@ files are pushed. Signed release publication additionally requires the repositor
 The packaged local release is `build/heltec-os-v1.1.0-ota.zip`; it contains only the application,
 signed manifest and signature. Extract it and attach the three files individually to a GitHub
 Release if using manual publication. No private key is in the archive.
+
+## Verified local build: 2026-10-18 (1.2.0)
+
+- Arduino CLI 1.5.1 / Heltec core 3.3.8 / pinned libraries: final compilation passed.
+- Application image: 1,208,128 bytes of 2,097,152 bytes per OTA slot; partition validation passed.
+- Compiler static RAM: 49,788 of 327,680 bytes.
+- Compiled source copies match the workspace, excluding generated `#line` directives.
+- All 20 Python release/validator tests and the native OTA protocol tests passed.
+- Native Morse tests cover the alphabet/digits, button-duration boundaries, invalid and oversized
+  input, symbol/letter/word pulse spacing, draft editing, held-button pauses and clock rollover.
+- The embedded browser script passes syntax and simulated DOM/network tests for received messages,
+  successful sends, busy-state rejection without draft loss, input validation, light stop and expired sessions.
+- Both workflow YAML files parse. They include the new Morse and browser-script tests.
+- No hardware was flashed or release published. Real phone/browser layout, WiFi delivery, PRG timing
+  and LED playback still require the acceptance checks in `messages.md`; browser automation could
+  not start in this desktop environment, so the browser tests above are simulated.

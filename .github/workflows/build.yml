@@ -33,6 +33,9 @@ jobs:
           python3 -m unittest discover -s scripts -p 'test_*.py'
           g++ -std=c++17 -Wall -Wextra -Werror tests/ota_protocol_test.cpp -o /tmp/ota-tests
           /tmp/ota-tests
+          g++ -std=c++17 -Wall -Wextra -Werror tests/morse_test.cpp -o /tmp/morse-tests
+          /tmp/morse-tests
+          node tests/messages_page_test.js
           python3 scripts/validate_build.py build/output
       - uses: actions/upload-artifact@v7
         with:

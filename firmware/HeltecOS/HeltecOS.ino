@@ -10,6 +10,7 @@
 #include "Config.h"
 #include "Types.h"
 #include "OtaUpdater.h"
+#include "Messages.h"
 
 #if !defined(ARDUINO_HELTEC_WIFI_LORA_32_V3)
 #error "Select Heltec WiFi LoRa 32(V3) before compiling."
@@ -23,7 +24,14 @@ Credentials saved;
 Credentials candidate;
 NetworkEntry networks[Config::MAX_NETWORKS];
 Page page = Page::Boot;
-const char *mainItems[] = {"WiFi", "Update system", "About"};
+const char *mainItems[] = {"WiFi", "Messages", "Update system", "About"};
+const char *messageItems[] = {"Compose", "Inbox", "Phone access", "Stop light", "Back"};
+const char *draftItems[] = {"Continue writing", "Add space", "Send + light", "Delete last", "Clear draft", "Back to Messages"};
+Morse::Composer composer;
+int messageSelection = 0, draftSelection = 0;
+size_t inboxOffset = 0, inboxPart = 0;
+uint32_t inboxNewestId = 0;
+String messageNotice;
 const char *wifiItems[] = {"Scan networks", "Connection status", "Forget network", "Back"};
 int mainSelection = 0;
 int wifiSelection = 0;
@@ -150,7 +158,6 @@ void acceptCredentials() {
 
 void stopPortal() {
   if (!portalActive) return;
-  server.stop();
   dns.stop();
   WiFi.softAPdisconnect(true);
   WiFi.mode(WIFI_STA);
@@ -208,7 +215,6 @@ void startPortal() {
   portalAt = millis();
   statusMessage = "Enter the password for the selected network.";
   dns.start(53, "*", WiFi.softAPIP());
-  server.begin();
   page = Page::Portal;
 }
 
@@ -314,7 +320,15 @@ void chooseNetwork() {
 
 void shortPress() {
   switch (page) {
-    case Page::Menu: mainSelection = (mainSelection + 1) % 3; break;
+    case Page::Menu: mainSelection = (mainSelection + 1) % 4; break;
+    case Page::MessagesMenu: messageSelection = (messageSelection + 1) % 5; messageNotice = ""; break;
+    case Page::DraftActions: draftSelection = (draftSelection + 1) % 6; messageNotice = ""; break;
+    case Page::Inbox:
+      if (Messages::count()) {
+        if ((inboxPart + 1) * 36 < Messages::newest(inboxOffset).text.length()) ++inboxPart;
+        else { inboxPart = 0; inboxOffset = (inboxOffset + 1) % Messages::count(); }
+      }
+      break;
     case Page::WiFiMenu: wifiSelection = (wifiSelection + 1) % 4; break;
     case Page::Networks: networkSelection = (networkSelection + 1) % (networkCount + 2); break;
     case Page::Forget: forgetConfirmed = !forgetConfirmed; break;
@@ -327,9 +341,32 @@ void longPress() {
   switch (page) {
     case Page::Boot: page = Page::Menu; break;
     case Page::Menu:
-      page = mainSelection == 0 ? Page::WiFiMenu : mainSelection == 1 ? Page::Update : Page::About;
+      page = mainSelection == 0 ? Page::WiFiMenu : mainSelection == 1 ? Page::MessagesMenu : mainSelection == 2 ? Page::Update : Page::About;
       if (page == Page::Update) { updateActionSelected = false; Ota::check(); }
       break;
+    case Page::MessagesMenu:
+      messageNotice = "";
+      if (messageSelection == 0) page = Page::Compose;
+      else if (messageSelection == 1) { inboxOffset = inboxPart = 0; page = Page::Inbox; }
+      else if (messageSelection == 2) page = Page::PhoneAccess;
+      else if (messageSelection == 3) { Messages::stopLight(); messageNotice = "Light stopped"; }
+      else page = Page::Menu;
+      break;
+    case Page::DraftActions:
+      messageNotice = "";
+      if (draftSelection == 0) page = Page::Compose;
+      else if (draftSelection == 1) { composer.space(); page = Page::Compose; }
+      else if (draftSelection == 2) {
+        if (Messages::send(String(composer.text.c_str()), false)) {
+          composer.clear(); messageNotice = "Sent to history + LED"; page = Page::MessagesMenu;
+        } else messageNotice = Messages::error();
+      }
+      else if (draftSelection == 3) { composer.erase(); page = Page::Compose; }
+      else if (draftSelection == 4) { composer.clear(); page = Page::Compose; }
+      else page = Page::MessagesMenu;
+      break;
+    case Page::Inbox:
+    case Page::PhoneAccess: page = Page::MessagesMenu; break;
     case Page::WiFiMenu:
       if (wifiSelection == 0) startScan();
       else if (wifiSelection == 1) page = Page::Status;
@@ -380,7 +417,13 @@ void pollButton() {
     if (stableButton == LOW) { pressedAt = now; buttonArmed = true; }
     else if (buttonArmed) {
       buttonArmed = false;
-      if (now - pressedAt >= Config::LONG_PRESS_MS) longPress();
+      if (page == Page::Compose) {
+        auto gesture = Morse::classify(now - pressedAt);
+        if (gesture == Morse::Gesture::Actions) {
+          composer.commit(); draftSelection = 0; messageNotice = ""; page = Page::DraftActions;
+        } else composer.add(gesture == Morse::Gesture::Dot ? '.' : '-', now);
+      }
+      else if (now - pressedAt >= Config::LONG_PRESS_MS) longPress();
       else shortPress();
     }
   }
@@ -425,11 +468,61 @@ void drawScreen() {
       oled.drawRect(14, 46, 100, 8);
       oled.fillRect(16, 48, min(millis() - bootAt, Config::BOOT_MS) * 96 / Config::BOOT_MS, 4);
       break;
-    case Page::Menu:
+    case Page::Menu: {
       title("HELTEC OS v" + String(Config::VERSION));
-      for (int i = 0; i < 3; ++i) row(15 + i * 12, mainItems[i], mainSelection == i);
+      int first = mainSelection < 3 ? 0 : 1;
+      for (int i = first; i < first + 3; ++i) row(15 + (i - first) * 12, mainItems[i], mainSelection == i);
       line(51, "Tap: next  Hold: select");
       break;
+    }
+    case Page::MessagesMenu: {
+      title("Messages (" + String(Messages::count()) + ")" + (Messages::flashing() ? " *" : ""));
+      int first = messageSelection < 3 ? 0 : messageSelection - 2;
+      for (int i = first; i < min(first + 3, 5); ++i) row(15 + (i - first) * 12, messageItems[i], messageSelection == i);
+      line(51, messageNotice.isEmpty() ? "Tap: next  Hold: select" : messageNotice);
+      break;
+    }
+    case Page::Compose: {
+      title("Compose " + String(composer.text.size()) + "/80");
+      String draft(composer.text.c_str());
+      if (draft.length() > 24) draft = draft.substring(draft.length() - 24);
+      line(15, draft.substring(0, 12)); line(27, draft.substring(12));
+      String marks(composer.symbols.c_str());
+      if (stableButton == LOW) marks += millis() - pressedAt >= 1800 ? " [Actions]" : millis() - pressedAt >= 350 ? " [-]" : " [.]";
+      line(39, composer.notice.empty() ? (marks.isEmpty() ? "Tap . / hold - / wait letter" : marks) : String(composer.notice.c_str()));
+      line(51, "Hold 1.8s: actions");
+      break;
+    }
+    case Page::DraftActions: {
+      title("Draft actions");
+      int first = draftSelection < 3 ? 0 : draftSelection - 2;
+      for (int i = first; i < min(first + 3, 6); ++i) row(15 + (i - first) * 12, draftItems[i], draftSelection == i);
+      line(51, messageNotice.isEmpty() ? "Tap: next  Hold: select" : messageNotice);
+      break;
+    }
+    case Page::Inbox: {
+      if (!Messages::count()) { title("Inbox"); line(24, "No messages yet"); }
+      else {
+        if (inboxOffset >= Messages::count() || inboxNewestId != Messages::newest(0).id) {
+          inboxOffset = inboxPart = 0; inboxNewestId = Messages::newest(0).id;
+        }
+        const auto &message = Messages::newest(inboxOffset);
+        title(String(message.fromPhone ? "Phone" : "Board") + " #" + String(message.id) + " " + String(inboxPart + 1) + "/" + String((message.text.length() + 35) / 36));
+        for (size_t i = 0; i < 3; ++i) {
+          size_t start = inboxPart * 36 + i * 12;
+          line(15 + i * 12, start < message.text.length() ? message.text.substring(start, start + 12) : "");
+        }
+      }
+      line(51, "Tap: next  Hold: back"); break;
+    }
+    case Page::PhoneAccess:
+      title("Phone: same WiFi");
+      if (WiFi.status() == WL_CONNECTED) {
+        line(15, "http://");
+        line(27, WiFi.localIP().toString());
+        line(39, "Code: " + Messages::accessCode());
+      } else { line(22, "Connect WiFi first"); line(36, "WiFi > Scan networks"); }
+      line(51, "Hold PRG: back"); break;
     case Page::WiFiMenu: {
       title(WiFi.status() == WL_CONNECTED ? "WiFi - Connected" : "WiFi - Offline");
       int first = wifiSelection < 3 ? 0 : 1;
@@ -524,13 +617,15 @@ void setup() {
     saved.ssid[32] = '\0';
     saved.password[64] = '\0';
   }
-  server.on("/", HTTP_GET, showPortalForm);
+  Messages::begin(server);
+  server.on("/", HTTP_GET, []() { if (portalClient()) showPortalForm(); else Messages::home(); });
   server.on("/connect", HTTP_POST, acceptCredentials);
   server.onNotFound([]() {
-    if (!portalClient()) { server.send(403, "text/plain", "Setup unavailable."); return; }
+    if (!portalClient()) { server.send(404, "text/plain", "Not found. Open /messages."); return; }
     server.sendHeader("Location", "http://192.168.4.1/");
     server.send(302, "text/plain", "Open WiFi setup.");
   });
+  server.begin();
   if (saved.ssid[0]) {
     candidate = saved;
     startConnection(false);
@@ -543,10 +638,12 @@ void setup() {
 void loop() {
   Ota::tick(displayReady, storageReady);
   pollButton();
+  if (page == Page::Compose) composer.tick(millis(), stableButton == LOW || previousReading == LOW);
   pollScan();
+  Messages::tick(!portalActive && !connecting, Ota::snapshot().busy);
+  server.handleClient();
   if (portalActive) {
     dns.processNextRequest();
-    server.handleClient();
     if (connectQueued) { connectQueued = false; startConnection(true); }
     if (millis() - portalAt >= Config::PORTAL_TIMEOUT_MS) {
       cancelConnection();

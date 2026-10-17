@@ -1,6 +1,6 @@
 # Signed OTA updates
 
-Heltec OS 1.1.0 updates from the public repository **lauraonetwo/heltec-os**.
+Heltec OS 1.2.0 updates from the public repository **lauraonetwo/heltec-os**.
 The board needs Internet access over its saved WiFi network. It does not need a GitHub token.
 The firmware, menus and setup instructions are in English.
 
@@ -40,16 +40,16 @@ write access restricted: someone able to change workflows using this secret can 
 For stronger separation, retain the key offline and use the manual signing route below instead.
 The workflow does not overwrite an existing release; use a new version tag for every new build.
 
-## 3. Publish the first release
+## 3. Publish a release
 
 Commit and push the source, including `OtaTrust.h`, `OtaProtocol.h`, `OtaUpdater.cpp`, the new
 scripts, tests and workflows. Do not add `.local/` or `build/`.
 
-After configuring the secret, tag the commit containing version 1.1.0:
+After configuring the secret, tag the commit containing version 1.2.0:
 
 ```text
-git tag v1.1.0
-git push origin v1.1.0
+git tag v1.2.0
+git push origin v1.2.0
 ```
 
 The **Publish signed OTA release** workflow compiles, tests, validates the actual binary and
@@ -74,11 +74,11 @@ device; retry once publication has completed. Nothing is installed unless verifi
 ## 4. Publish later changes
 
 1. Make and test the code changes.
-2. Change `HELTEC_OS_VERSION` in `firmware/HeltecOS/Config.h`, for example from `1.1.0` to `1.1.1`.
+2. Change `HELTEC_OS_VERSION` in `firmware/HeltecOS/Config.h`, for example from `1.2.0` to `1.2.1`.
 3. Commit and push the changes.
-4. Create and push the matching new tag, for example `v1.1.1`.
+4. Create and push the matching new tag, for example `v1.2.1`.
 5. Wait for the signed release workflow to succeed.
-6. On the Heltec, open **Update system**. When it shows 1.1.1, tap PRG to select **Install update**,
+6. On the Heltec, open **Update system**. When it shows 1.2.1, tap PRG to select **Install update**,
    then hold PRG for at least 0.7 seconds and release to confirm.
 
 Only stable `MAJOR.MINOR.PATCH` versions are supported; each numeric component is at most 65535.
@@ -93,7 +93,7 @@ Use the pinned dependencies and compile as described in the README. Then run fro
 ```text
 python -m pip install -r scripts/requirements.txt
 python scripts/validate_build.py build/output
-python scripts/ota_release.py sign --tag v1.1.0
+python scripts/ota_release.py sign --tag v1.2.0
 python scripts/ota_release.py verify build/release
 ```
 
