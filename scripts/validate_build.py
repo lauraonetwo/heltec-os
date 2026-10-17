@@ -58,7 +58,12 @@ def main():
     validate_image(image, slot_size)
     root = Path(__file__).resolve().parents[1]
     config = (root / "firmware/HeltecOS/Config.h").read_text(encoding="utf-8-sig")
-    version = re.search(r'VERSION\[\] = "([0-9]+\.[0-9]+\.[0-9]+)"', config).group(1)
+    version = re.search(r'#define HELTEC_OS_VERSION "([0-9]+\.[0-9]+\.[0-9]+)"', config).group(1)
+    trust = (root / "firmware/HeltecOS/OtaTrust.h").read_text(encoding="utf-8-sig")
+    key_id = re.search(r'HELTEC_OS_SIGNING_KEY_ID "([0-9a-f]{64})"', trust).group(1)
+    marker = f"HELTEC_OS_IMAGE_V1|heltec-wifi-lora-32-v3.2|{version}|{key_id}|".encode()
+    if marker not in image:
+        raise ValueError("Compiled image does not match the source version and public OTA key")
     manifest = {
         "version": version,
         "board": "heltec-wifi-lora-32-v3.2",
@@ -66,8 +71,9 @@ def main():
         "file": "heltec-os.bin",
         "size": len(image),
         "sha256": hashlib.sha256(image).hexdigest(),
-        "ota_enabled": False,
+        "ota_enabled": True,
         "signed": False,
+        "signing_key_sha256": key_id,
     }
     (args.output / "heltec-os.bin").write_bytes(image)
     (args.output / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")

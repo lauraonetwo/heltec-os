@@ -19,6 +19,7 @@ jobs:
           version: '1.5.1'
       - name: Install pinned board package and libraries
         run: |
+          python3 -m pip install -r scripts/requirements.txt
           arduino-cli config init
           arduino-cli config add board_manager.additional_urls https://resource.heltec.cn/download/package_heltec_esp32_index.json
           arduino-cli core update-index
@@ -30,8 +31,10 @@ jobs:
       - name: Check validator failure cases and firmware artifacts
         run: |
           python3 -m unittest discover -s scripts -p 'test_*.py'
+          g++ -std=c++17 -Wall -Wextra -Werror tests/ota_protocol_test.cpp -o /tmp/ota-tests
+          /tmp/ota-tests
           python3 scripts/validate_build.py build/output
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: heltec-os-usb-development-build
           path: |

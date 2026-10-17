@@ -9,6 +9,7 @@
 #include <HT_SSD1306Wire.h>
 #include "Config.h"
 #include "Types.h"
+#include "OtaUpdater.h"
 
 #if !defined(ARDUINO_HELTEC_WIFI_LORA_32_V3)
 #error "Select Heltec WiFi LoRa 32(V3) before compiling."
@@ -29,6 +30,9 @@ int wifiSelection = 0;
 int networkSelection = 0;
 int networkCount = 0;
 bool storageReady = false;
+bool displayReady = false;
+bool updateActionSelected = false;
+Ota::Phase lastUpdatePhase = Ota::Phase::Idle;
 bool scanActive = false;
 bool connecting = false;
 bool saveOnConnect = false;
@@ -314,6 +318,7 @@ void shortPress() {
     case Page::WiFiMenu: wifiSelection = (wifiSelection + 1) % 4; break;
     case Page::Networks: networkSelection = (networkSelection + 1) % (networkCount + 2); break;
     case Page::Forget: forgetConfirmed = !forgetConfirmed; break;
+    case Page::Update: if (!Ota::snapshot().busy) updateActionSelected = !updateActionSelected; break;
     default: break;
   }
 }
@@ -323,6 +328,7 @@ void longPress() {
     case Page::Boot: page = Page::Menu; break;
     case Page::Menu:
       page = mainSelection == 0 ? Page::WiFiMenu : mainSelection == 1 ? Page::Update : Page::About;
+      if (page == Page::Update) { updateActionSelected = false; Ota::check(); }
       break;
     case Page::WiFiMenu:
       if (wifiSelection == 0) startScan();
@@ -348,6 +354,17 @@ void longPress() {
         page = removed ? Page::Status : Page::Notice;
       } else page = Page::WiFiMenu;
       break;
+    case Page::Update: {
+      auto update = Ota::snapshot();
+      if (update.busy) Ota::cancel();
+      else if (!updateActionSelected) page = Page::Menu;
+      else {
+        updateActionSelected = false;
+        if (update.phase == Ota::Phase::Available) Ota::install();
+        else Ota::check();
+      }
+      break;
+    }
     case Page::Status:
     case Page::Notice: page = Page::WiFiMenu; break;
     default: page = Page::Menu; break;
@@ -459,11 +476,27 @@ void drawScreen() {
       title("Forget saved network?"); line(18, String(saved.ssid));
       row(32, forgetConfirmed ? "Forget network" : "Cancel", true);
       line(51, "Tap: change  Hold: OK"); break;
-    case Page::Update:
-      title("Update system"); line(16, "Version " + String(Config::VERSION));
-      line(28, "OTA not enabled yet");
-      line(40, esp_ota_get_next_update_partition(nullptr) ? "OTA partition ready" : "No OTA partition");
-      line(51, "Hold PRG: back"); break;
+    case Page::Update: {
+      auto update = Ota::snapshot();
+      if (update.phase != lastUpdatePhase) { updateActionSelected = false; lastUpdatePhase = update.phase; }
+      title("Update system");
+      if (update.phase == Ota::Phase::Available) {
+        line(15, "Available: " + String(update.version));
+        line(27, "Installed: " + String(Config::VERSION));
+      } else {
+        line(15, String(update.message));
+        line(27, update.busy ? String(update.progress) + "%" : "Version " + String(Config::VERSION));
+      }
+      if (update.busy) {
+        oled.drawRect(14, 43, 100, 5);
+        oled.fillRect(15, 44, update.progress * 98 / 100, 3);
+        line(51, update.cancellable ? "Hold PRG: cancel" : "Keep power connected");
+      } else {
+        row(39, updateActionSelected ? (update.phase == Ota::Phase::Available ? "Install update" : "Check again") : "Back", true);
+        line(51, "Tap: change  Hold: OK");
+      }
+      break;
+    }
     case Page::About:
       title("About Heltec OS"); line(16, "Version " + String(Config::VERSION));
       line(28, "Heltec V3.2 / ESP32-S3");
@@ -480,7 +513,7 @@ void setup() {
   pinMode(Vext, OUTPUT);
   digitalWrite(Vext, LOW);
   delay(100);
-  oled.init();
+  displayReady = oled.init();
   bootAt = millis();
   WiFi.persistent(false);
   WiFi.setHostname("heltec-os");
@@ -504,9 +537,11 @@ void setup() {
     page = Page::Boot;
   }
   Serial.println("HELTEC OS v" + String(Config::VERSION));
+  Serial.println(Ota::imageIdentity());
 }
 
 void loop() {
+  Ota::tick(displayReady, storageReady);
   pollButton();
   pollScan();
   if (portalActive) {

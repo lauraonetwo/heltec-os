@@ -1,0 +1,73 @@
+name: Publish signed OTA release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing stable tag, for example v1.1.0'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+          persist-credentials: false
+      - name: Validate tag and signing setup
+        env:
+          OTA_SIGNING_PRIVATE_KEY: ${{ secrets.OTA_SIGNING_PRIVATE_KEY }}
+        run: |
+          python3 - <<'PY'
+          import os, re
+          tag = os.environ['RELEASE_TAG']
+          if not re.fullmatch(r'v(?:0|[1-9][0-9]{0,4})\.(?:0|[1-9][0-9]{0,4})\.(?:0|[1-9][0-9]{0,4})', tag):
+              raise SystemExit('A stable vMAJOR.MINOR.PATCH tag is required')
+          if not os.environ.get('OTA_SIGNING_PRIVATE_KEY'):
+              raise SystemExit('Configure the OTA_SIGNING_PRIVATE_KEY repository secret before publishing')
+          PY
+          git show-ref --verify "refs/tags/$RELEASE_TAG"
+      - uses: arduino/setup-arduino-cli@v2
+        with:
+          version: '1.5.1'
+      - name: Install pinned dependencies
+        run: |
+          python3 -m pip install -r scripts/requirements.txt
+          arduino-cli config init
+          arduino-cli config add board_manager.additional_urls https://resource.heltec.cn/download/package_heltec_esp32_index.json
+          arduino-cli core update-index
+          arduino-cli core install Heltec-esp32:esp32@3.3.8
+          arduino-cli lib update-index
+          arduino-cli lib install --no-deps 'Adafruit BusIO@1.17.4' 'Adafruit GFX Library@1.12.6' 'heltec-eink-modules@4.6.0' 'Heltec ESP32 Dev-Boards@2.1.6'
+      - name: Test and compile
+        run: |
+          python3 -m unittest discover -s scripts -p 'test_*.py'
+          g++ -std=c++17 -Wall -Wextra -Werror tests/ota_protocol_test.cpp -o /tmp/ota-tests
+          /tmp/ota-tests
+          arduino-cli compile --fqbn Heltec-esp32:esp32:heltec_wifi_lora_32_V3 --build-path build/compile --output-dir build/output firmware/HeltecOS
+          python3 scripts/validate_build.py build/output
+      - name: Sign release assets
+        env:
+          OTA_SIGNING_PRIVATE_KEY: ${{ secrets.OTA_SIGNING_PRIVATE_KEY }}
+        run: |
+          python3 scripts/ota_release.py sign --tag "$RELEASE_TAG" --key-env OTA_SIGNING_PRIVATE_KEY
+          python3 scripts/ota_release.py verify build/release
+      - name: Publish signed release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release create "$RELEASE_TAG" --verify-tag --title "Heltec OS $RELEASE_TAG" --generate-notes --latest \
+            build/release/heltec-os.bin build/release/manifest.txt build/release/manifest.sig

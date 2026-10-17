@@ -1,13 +1,13 @@
 # Heltec OS
 
 Experimental firmware for **Heltec WiFi LoRa 32 V3.2 (ESP32-S3, 8 MB flash)**.
-Version **1.0.0** implements the first stage of the project: an English OLED interface,
-one-button navigation, WiFi setup from a phone, and a partition layout prepared for OTA.
+Version **1.1.0** provides an English OLED interface, one-button navigation, WiFi setup from a phone,
+and signed OTA updates from **lauraonetwo/heltec-os** on GitHub.
 
 ## Main menu
 
 - **WiFi**: scan and select nearby networks, view connection status, or forget the saved network.
-- **Update system**: show the installed version and OTA partition availability. Downloading and installing updates is **not enabled in this version**.
+- **Update system**: check GitHub Releases, verify the release signature, confirm an available version, and install it over WiFi.
 - **About**: show the version, board, processor and flash size.
 
 Startup displays `hi user!`. Change `USER_NAME` in `firmware/HeltecOS/Config.h` to customize it.
@@ -85,7 +85,9 @@ https://resource.heltec.cn/download/package_heltec_esp32_index.json
    no custom partition menu entry needs to be created.
 5. Click **Upload** for the first installation by USB. This installs the application and its
    two-slot OTA partition table. Future USB uploads should retain that same table.
-6. Open **Update system** and check for `OTA partition ready`.
+6. Open **Update system**. It checks GitHub Releases. Until a signed release is published,
+   `No OTA release yet` is expected. A published version equal to the installed version shows
+   `System is up to date`.
 
 Do not copy just the application binary to an arbitrary flash offset for the first installation.
 Use Arduino IDE/CLI so the bootloader and partition table are installed together.
@@ -105,20 +107,43 @@ Use `--config-file "%USERPROFILE%\.arduinoIDE\arduino-cli.yaml"` if you need the
 
 The validator checks the **compiled** partition table, ESP32-S3 image header and 2 MB size limit,
 then writes `build/output/heltec-os.bin` and `build/output/manifest.json`.
-The manifest's SHA-256 is an integrity checksum, not a digital signature.
+This `manifest.json` describes the USB development build; it is not the signed OTA manifest.
+The release signer separately creates `manifest.txt` and `manifest.sig`.
 The Arduino size summary may show the board package's default application limit; the validator
 enforces the actual 2 MiB limit of this project's custom OTA slots. Build files are ignored by Git.
 
 GitHub Actions repeats compilation and validation on pushes, pull requests and manual runs,
-using the pinned versions. Its artifacts are USB development builds, not signed OTA releases.
-The workflow does not publish a release or install anything on the device.
+using the pinned versions. Its ZIP artifacts are USB development builds. The separate
+`release.yml` workflow publishes signed OTA assets when a stable version tag is pushed, after
+you configure the signing secret. Neither workflow installs anything on the device automatically.
+
+## Enable OTA on your existing device
+
+The old `heltec-os-usb-development-build.zip` contains version 1.0.0 and cannot update itself.
+Compile this repository's version 1.1.0 and upload it once more by USB, using the same partition
+table and leaving full-flash erase disabled. The stored WiFi credentials remain in NVS.
+**Local Arduino IDE builds have the same OTA functionality and public trust key as CI builds.**
+No private signing key is required to compile or install the firmware by USB.
+
+In **Update system**, checking starts automatically. When a newer signed version is available,
+`Back` is selected initially. Tap PRG to highlight **Install update**, then hold and release PRG
+to confirm. The display shows progress; hold PRG to cancel before finalization. After verification,
+the device selects the inactive slot and restarts. Keep power connected during finalization.
+
+Publish updates to [lauraonetwo/heltec-os Releases](https://github.com/lauraonetwo/heltec-os/releases)
+using the steps in [docs/ota.md](docs/ota.md). Uploading source files or a CI ZIP alone does not
+create an OTA release. The first published 1.1.0 release establishes the release pipeline;
+a device already running 1.1.0 will install the next higher version, such as 1.1.1.
 
 ## Project files
 
 - `firmware/HeltecOS/`: firmware and the two-slot OTA partition table.
 - `scripts/validate_build.py`: build checks and application manifest generation.
 - `.github/workflows/build.yml`: automated compile and artifact checks.
-- `docs/ota.md`: current OTA status and requirements for signed updates.
+- `docs/ota.md`: first OTA installation, signing-key setup, releases, and recovery.
+- `firmware/HeltecOS/OtaTrust.h`: public signing key embedded in both local and CI builds.
+- `scripts/ota_release.py`: local signing and verification tools.
+- `.github/workflows/release.yml`: signed GitHub Releases.
 - `docs/testing.md`: hardware acceptance checks and validation limits.
 
 Hardware references: [Heltec V3 documentation](https://wiki.heltec.org/docs/devices/open-source-hardware/esp32-series/lora-32/wifi-lora-32-v3/)

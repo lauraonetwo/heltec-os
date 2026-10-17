@@ -1,7 +1,9 @@
 #pragma once
 
+#define HELTEC_OS_VERSION "1.1.0"
+
 namespace Config {
-constexpr char VERSION[] = "1.0.0";
+constexpr char VERSION[] = HELTEC_OS_VERSION;
 constexpr char USER_NAME[] = "user";
 constexpr unsigned long BOOT_MS = 2500;
 constexpr unsigned long DEBOUNCE_MS = 40;

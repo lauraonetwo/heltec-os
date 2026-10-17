@@ -8,3 +8,6 @@ build/
 secrets.h
 .env
 __pycache__/
+
+.local/
+*.sig
