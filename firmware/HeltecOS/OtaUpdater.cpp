@@ -111,6 +111,9 @@ class Request {
       config.event_handler = event;
       config.user_data = this;
       config.buffer_size = 4096;
+      // GitHub asset redirects include long signed queries (URLs are capped at 4096 bytes).
+      // The transmit buffer is separate from the receive buffer configured above.
+      config.buffer_size_tx = 5120;
       config.user_agent = "HeltecOS/" HELTEC_OS_VERSION;
       client = esp_http_client_init(&config);
       if (!client || esp_http_client_open(client, 0) != ESP_OK) return false;
