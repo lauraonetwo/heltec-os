@@ -13,7 +13,7 @@ button:disabled{opacity:.5}article{background:#1b2933;padding:12px;margin:10px 0
 small{color:#b9cad4}#status{min-height:1.5em}a{color:#80d8c0}
 </style>
 <h1>Heltec OS Messages</h1><p>Phone &harr; board &middot; Morse light</p>
-<p><small>Same WiFi network. Last 12 messages, kept until restart. Each sent message also flashes on the board LED.</small></p>
+<p><small>Join the same WiFi network or the board's Device hotspot. Internet is not needed for messages. Last 12 messages, kept until restart. Each sent message also flashes on the board LED.</small></p>
 <form id="compose"><label for="text">Message (A-Z, 0-9 and spaces)</label>
 <textarea id="text" maxlength="80" rows="3" required placeholder="HELLO HELTEC" spellcheck="false"></textarea>
 <button id="send">Send to board + light</button></form>

@@ -1,12 +1,12 @@
 # Heltec OS
 
 Experimental firmware for **Heltec WiFi LoRa 32 V3.2 (ESP32-S3, 8 MB flash)**.
-Version **1.2.0** provides an English OLED interface, one-button navigation, WiFi setup from a phone,
+Version **1.3.0** provides an English OLED interface, one-button navigation, WiFi setup from a phone,
 bidirectional local messages with Morse light, and signed OTA updates from **lauraonetwo/heltec-os** on GitHub.
 
 ## Main menu
 
-- **WiFi**: scan and select nearby networks, view connection status, or forget the saved network.
+- **WiFi**: choose **WiFi network** or **Device hotspot**, scan networks, view status, or forget the saved router.
 - **Messages**: write Morse with PRG, read messages from your phone, open the phone page, or stop the LED.
 - **Update system**: check GitHub Releases, verify the release signature, confirm an available version, and install it over WiFi.
 - **About**: show the version, board, processor and flash size.
@@ -32,6 +32,11 @@ pause 1.2 seconds between letters. Hold at least 1.8 seconds for draft actions.
 See [bidirectional messages](docs/messages.md) for pairing, spaces, sending and LED timing.
 
 ## Entering a WiFi password
+
+First select **WiFi > Connection mode > WiFi network** (the default). To use an iPhone without
+a router, choose **Device hotspot** instead and follow the [direct connection steps](docs/messages.md#device-hotspot-iphone-without-a-router-or-internet).
+The board remembers the selected mode. Both modes support messages and Morse light; OTA requires
+WiFi network mode with Internet access.
 
 1. Open **WiFi > Scan networks**. Tap PRG to highlight your network, then hold and release to select it.
 2. For a password-protected network, the OLED displays a temporary network such as `Heltec-A1B2`
@@ -125,7 +130,7 @@ you configure the signing secret. Neither workflow installs anything on the devi
 ## Enable OTA on your existing device
 
 The old `heltec-os-usb-development-build.zip` contains version 1.0.0 and cannot update itself.
-Compile this repository's version 1.2.0 and upload it once more by USB, using the same partition
+Compile this repository's version 1.3.0 and upload it once more by USB, using the same partition
 table and leaving full-flash erase disabled. The stored WiFi credentials remain in NVS.
 **Local Arduino IDE builds have the same OTA functionality and public trust key as CI builds.**
 No private signing key is required to compile or install the firmware by USB.
@@ -137,7 +142,7 @@ the device selects the inactive slot and restarts. Keep power connected during f
 
 Publish updates to [lauraonetwo/heltec-os Releases](https://github.com/lauraonetwo/heltec-os/releases)
 using the steps in [docs/ota.md](docs/ota.md). Uploading source files or a CI ZIP alone does not
-create an OTA release. A device running 1.1.1 can install the signed 1.2.0 release.
+create an OTA release. A device running 1.1.1 can install the signed 1.3.0 release.
 An original 1.1.0 device reporting `HTTP_CLIENT: Out of buffer` needs the fixed firmware by USB.
 
 ## Project files

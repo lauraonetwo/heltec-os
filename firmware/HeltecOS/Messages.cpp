@@ -7,7 +7,8 @@ namespace Messages {
 namespace {
 WebServer *http = nullptr;
 String code, session, nonce;
-bool allowed = false, updateBusy = false;
+NetworkAccess::Interface networkInterface = NetworkAccess::Interface::Blocked;
+bool updateBusy = false;
 Message history[12];
 size_t historyCount = 0, nextSlot = 0;
 uint32_t nextId = 1;
@@ -30,8 +31,9 @@ void headers(bool script = false) {
     (script ? "; script-src 'nonce-" + nonce + "'" : ""));
 }
 bool local() {
-  if (allowed && WiFi.status() == WL_CONNECTED && http->client().localIP() == WiFi.localIP()) return true;
-  http->send(403, "text/plain", "Messages require the board's normal WiFi connection.");
+  if (NetworkAccess::permits(networkInterface, uint32_t(http->client().localIP()),
+      WiFi.status() == WL_CONNECTED ? uint32_t(WiFi.localIP()) : 0, uint32_t(WiFi.softAPIP()))) return true;
+  http->send(403, "text/plain", "Join the selected messaging network. WiFi password setup cannot access messages.");
   return false;
 }
 bool signedIn() {
@@ -107,15 +109,15 @@ void home() {
       "<h1>Heltec OS Messages</h1><p>On the board, open <strong>Messages &gt; Phone access</strong>.</p>"
       "<form action='/messages/login' method='post'><label for='code'>Access code shown on the OLED</label>"
       "<input id='code' name='code' maxlength='8' minlength='8' autocomplete='off' autocapitalize='characters' required>"
-      "<button>Connect</button></form><p>The code changes when the board restarts. Use your trusted local WiFi network.</p></html>");
+      "<button>Connect</button></form><p>The code changes when the board restarts. Join the same WiFi network or the board's Device hotspot.</p></html>");
     return;
   }
   String html(FPSTR(MESSAGE_PAGE));
   html.replace("{{TOKEN}}", session); html.replace("{{NONCE}}", nonce);
   http->send(200, "text/html; charset=utf-8", html);
 }
-void tick(bool networkAllowed, bool updating) {
-  allowed = networkAllowed; updateBusy = updating;
+void tick(NetworkAccess::Interface interface, bool updating) {
+  networkInterface = interface; updateBusy = updating;
   if (updating) { stopLight(); return; }
   if (flashing() && uint32_t(millis() - lightAt) >= light[lightIndex] * 120U) {
     ++lightIndex; lightAt = millis();

@@ -58,6 +58,8 @@ jobs:
           /tmp/ota-tests
           g++ -std=c++17 -Wall -Wextra -Werror tests/morse_test.cpp -o /tmp/morse-tests
           /tmp/morse-tests
+          g++ -std=c++17 -Wall -Wextra -Werror tests/network_access_test.cpp -o /tmp/network-tests
+          /tmp/network-tests
           node tests/messages_page_test.js
           arduino-cli compile --fqbn Heltec-esp32:esp32:heltec_wifi_lora_32_V3 --build-path build/compile --output-dir build/output firmware/HeltecOS
           python3 scripts/validate_build.py build/output

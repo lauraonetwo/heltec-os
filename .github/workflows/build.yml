@@ -35,6 +35,8 @@ jobs:
           /tmp/ota-tests
           g++ -std=c++17 -Wall -Wextra -Werror tests/morse_test.cpp -o /tmp/morse-tests
           /tmp/morse-tests
+          g++ -std=c++17 -Wall -Wextra -Werror tests/network_access_test.cpp -o /tmp/network-tests
+          /tmp/network-tests
           node tests/messages_page_test.js
           python3 scripts/validate_build.py build/output
       - uses: actions/upload-artifact@v7

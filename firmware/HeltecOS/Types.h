@@ -16,4 +16,4 @@ struct NetworkEntry {
 
 enum class Page { Boot, Menu, WiFiMenu, Scanning, Networks, Portal,
                   Connecting, Status, Notice, Forget, Update, About,
-                  MessagesMenu, Compose, DraftActions, Inbox, PhoneAccess };
+                  MessagesMenu, Compose, DraftActions, Inbox, PhoneAccess, ConnectionMode };

@@ -2,11 +2,12 @@
 #include <Arduino.h>
 #include <WebServer.h>
 #include "Morse.h"
+#include "NetworkAccess.h"
 
 namespace Messages {
 struct Message { uint32_t id = 0; bool fromPhone = false; String text; };
 void begin(WebServer &server);
-void tick(bool networkAllowed, bool updating);
+void tick(NetworkAccess::Interface interface, bool updating);
 void home();
 bool send(const String &text, bool fromPhone);
 const char *error();

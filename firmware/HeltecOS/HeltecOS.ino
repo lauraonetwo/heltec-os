@@ -32,7 +32,14 @@ int messageSelection = 0, draftSelection = 0;
 size_t inboxOffset = 0, inboxPart = 0;
 uint32_t inboxNewestId = 0;
 String messageNotice;
-const char *wifiItems[] = {"Scan networks", "Connection status", "Forget network", "Back"};
+const char *wifiItems[] = {"Connection mode", "Scan networks", "Connection status", "Forget network", "Back"};
+const char *modeItems[] = {"WiFi network", "Device hotspot", "Back"};
+int modeSelection = 0;
+bool hotspotActive = false;
+bool phoneAccessDetails = false;
+bool modeSaved = true;
+bool hotspotKeySaved = false;
+String hotspotName, hotspotPassword;
 int mainSelection = 0;
 int wifiSelection = 0;
 int networkSelection = 0;
@@ -168,6 +175,7 @@ void stopPortal() {
 }
 
 void restoreSavedConnection() {
+  if (hotspotActive) return;
   WiFi.setAutoReconnect(true);
   if (saved.ssid[0] && WiFi.status() != WL_CONNECTED) {
     WiFi.setMinSecurity(saved.password[0] ? WIFI_AUTH_WPA_PSK : WIFI_AUTH_OPEN);
@@ -256,6 +264,7 @@ void stopScan() {
 }
 
 void startScan() {
+  if (hotspotActive) { statusMessage = "Select WiFi network mode"; page = Page::Notice; return; }
   cancelConnection();
   WiFi.setAutoReconnect(false);
   if (WiFi.status() != WL_CONNECTED) WiFi.disconnect(false, false);
@@ -318,6 +327,43 @@ void chooseNetwork() {
   }
 }
 
+void setConnectionMode(bool hotspot, bool persist) {
+  if (Ota::snapshot().busy) { statusMessage = "System update busy"; page = Page::Notice; return; }
+  // Keep message history and saved router credentials while changing radio interfaces.
+  server.stop();
+  WiFi.setAutoReconnect(false);
+  if (scanActive) esp_wifi_scan_stop();
+  scanActive = false;
+  WiFi.scanDelete();
+  connecting = connectQueued = false;
+  candidate = Credentials{};
+  stopPortal();
+  hotspotActive = false;
+  WiFi.disconnect(false, false);
+  WiFi.softAPdisconnect(true);
+  phoneAccessDetails = false;
+  bool started = true;
+  if (hotspot) {
+    IPAddress address(192, 168, 4, 1);
+    started = WiFi.mode(WIFI_AP) && WiFi.softAPConfig(address, address, IPAddress(255, 255, 255, 0)) &&
+      WiFi.softAP(hotspotName.c_str(), hotspotPassword.c_str(), 1, false, 2);
+    if (started) {
+      hotspotActive = true;
+      statusMessage = "Hotspot active";
+      page = Page::PhoneAccess;
+    }
+  }
+  if (!hotspot || !started) {
+    WiFi.softAPdisconnect(true);
+    WiFi.mode(WIFI_STA);
+    if (saved.ssid[0]) { candidate = saved; selectedSsid = saved.ssid; startConnection(false); }
+    else { statusMessage = "Select Scan networks"; page = Page::Status; }
+    if (!started) { statusMessage = "Hotspot start failed"; page = Page::Notice; }
+  }
+  if (persist && started) modeSaved = storageReady && (!hotspot || hotspotKeySaved) && preferences.putBool("hotspot", hotspot) == 1;
+  server.begin();
+}
+
 void shortPress() {
   switch (page) {
     case Page::Menu: mainSelection = (mainSelection + 1) % 4; break;
@@ -329,10 +375,12 @@ void shortPress() {
         else { inboxPart = 0; inboxOffset = (inboxOffset + 1) % Messages::count(); }
       }
       break;
-    case Page::WiFiMenu: wifiSelection = (wifiSelection + 1) % 4; break;
+    case Page::WiFiMenu: wifiSelection = (wifiSelection + 1) % 5; break;
+    case Page::ConnectionMode: modeSelection = (modeSelection + 1) % 3; break;
+    case Page::PhoneAccess: if (hotspotActive) phoneAccessDetails = !phoneAccessDetails; break;
     case Page::Networks: networkSelection = (networkSelection + 1) % (networkCount + 2); break;
     case Page::Forget: forgetConfirmed = !forgetConfirmed; break;
-    case Page::Update: if (!Ota::snapshot().busy) updateActionSelected = !updateActionSelected; break;
+    case Page::Update: if (!hotspotActive && !Ota::snapshot().busy) updateActionSelected = !updateActionSelected; break;
     default: break;
   }
 }
@@ -342,13 +390,13 @@ void longPress() {
     case Page::Boot: page = Page::Menu; break;
     case Page::Menu:
       page = mainSelection == 0 ? Page::WiFiMenu : mainSelection == 1 ? Page::MessagesMenu : mainSelection == 2 ? Page::Update : Page::About;
-      if (page == Page::Update) { updateActionSelected = false; Ota::check(); }
+      if (page == Page::Update) { updateActionSelected = false; if (!hotspotActive) Ota::check(); }
       break;
     case Page::MessagesMenu:
       messageNotice = "";
       if (messageSelection == 0) page = Page::Compose;
       else if (messageSelection == 1) { inboxOffset = inboxPart = 0; page = Page::Inbox; }
-      else if (messageSelection == 2) page = Page::PhoneAccess;
+      else if (messageSelection == 2) { phoneAccessDetails = false; page = Page::PhoneAccess; }
       else if (messageSelection == 3) { Messages::stopLight(); messageNotice = "Light stopped"; }
       else page = Page::Menu;
       break;
@@ -368,10 +416,15 @@ void longPress() {
     case Page::Inbox:
     case Page::PhoneAccess: page = Page::MessagesMenu; break;
     case Page::WiFiMenu:
-      if (wifiSelection == 0) startScan();
-      else if (wifiSelection == 1) page = Page::Status;
-      else if (wifiSelection == 2) { forgetConfirmed = false; page = Page::Forget; }
+      if (wifiSelection == 0) { modeSelection = hotspotActive ? 1 : 0; page = Page::ConnectionMode; }
+      else if (wifiSelection == 1) startScan();
+      else if (wifiSelection == 2) page = Page::Status;
+      else if (wifiSelection == 3) { forgetConfirmed = false; page = Page::Forget; }
       else page = Page::Menu;
+      break;
+    case Page::ConnectionMode:
+      if (modeSelection == 2) page = Page::WiFiMenu;
+      else setConnectionMode(modeSelection == 1, true);
       break;
     case Page::Scanning: stopScan(); page = Page::WiFiMenu; break;
     case Page::Networks: chooseNetwork(); break;
@@ -385,13 +438,14 @@ void longPress() {
           candidate = Credentials{};
           saved = Credentials{};
           WiFi.setAutoReconnect(false);
-          WiFi.disconnect(false, true);
+          if (!hotspotActive) WiFi.disconnect(false, true);
           statusMessage = "Network forgotten";
         } else statusMessage = "Could not forget";
         page = removed ? Page::Status : Page::Notice;
       } else page = Page::WiFiMenu;
       break;
     case Page::Update: {
+      if (hotspotActive) { page = Page::Menu; break; }
       auto update = Ota::snapshot();
       if (update.busy) Ota::cancel();
       else if (!updateActionSelected) page = Page::Menu;
@@ -516,20 +570,29 @@ void drawScreen() {
       line(51, "Tap: next  Hold: back"); break;
     }
     case Page::PhoneAccess:
-      title("Phone: same WiFi");
-      if (WiFi.status() == WL_CONNECTED) {
+      title(!modeSaved ? "Settings not saved" : hotspotActive ? "Device hotspot" : "Phone: same WiFi");
+      if (hotspotActive && !phoneAccessDetails) {
+        line(15, hotspotName);
+        line(27, "Key: " + hotspotPassword);
+        line(39, "Join in iPhone WiFi");
+      } else if (hotspotActive || WiFi.status() == WL_CONNECTED) {
         line(15, "http://");
-        line(27, WiFi.localIP().toString());
+        line(27, (hotspotActive ? WiFi.softAPIP() : WiFi.localIP()).toString());
         line(39, "Code: " + Messages::accessCode());
       } else { line(22, "Connect WiFi first"); line(36, "WiFi > Scan networks"); }
-      line(51, "Hold PRG: back"); break;
+      line(51, hotspotActive ? "Tap: next  Hold: back" : "Hold PRG: back"); break;
     case Page::WiFiMenu: {
-      title(WiFi.status() == WL_CONNECTED ? "WiFi - Connected" : "WiFi - Offline");
-      int first = wifiSelection < 3 ? 0 : 1;
+      title(hotspotActive ? "WiFi - Hotspot" : WiFi.status() == WL_CONNECTED ? "WiFi - Connected" : "WiFi - Offline");
+      int first = wifiSelection < 3 ? 0 : wifiSelection - 2;
       for (int i = first; i < first + 3; ++i) row(15 + (i - first) * 12, wifiItems[i], wifiSelection == i);
       line(51, "Tap: next  Hold: select");
       break;
     }
+    case Page::ConnectionMode:
+      title(modeSaved ? "Connection mode" : "Mode not saved");
+      for (int i = 0; i < 3; ++i) row(15 + i * 12,
+        String(i == (hotspotActive ? 1 : 0) ? "* " : "  ") + modeItems[i], modeSelection == i);
+      line(51, "Tap: next  Hold: select"); break;
     case Page::Scanning:
       title("WiFi"); line(22, "Scanning networks..."); line(51, "Hold PRG: cancel"); break;
     case Page::Networks: {
@@ -554,15 +617,17 @@ void drawScreen() {
       title("WiFi"); line(18, "Connecting..."); line(32, selectedSsid.isEmpty() ? String(candidate.ssid) : selectedSsid);
       line(51, "Hold PRG: cancel"); break;
     case Page::Status:
-      title("WiFi status");
-      if (WiFi.status() == WL_CONNECTED) {
+      title(hotspotActive ? "Hotspot: " + String(WiFi.softAPgetStationNum()) + " clients" : "WiFi status");
+      if (hotspotActive) {
+        line(16, hotspotName); line(28, "Key: " + hotspotPassword); line(40, WiFi.softAPIP().toString());
+      } else if (WiFi.status() == WL_CONNECTED) {
         line(16, WiFi.SSID()); line(28, WiFi.localIP().toString());
         line(40, statusMessage == "Connected; not saved" ? statusMessage : "Signal: " + String(WiFi.RSSI()) + " dBm");
       } else {
         line(22, connecting ? "Connecting..." : statusMessage.startsWith("Connected") ? "Disconnected" : statusMessage);
         line(36, "2.4 GHz WiFi only");
       }
-      line(51, "Hold PRG: back"); break;
+      line(51, modeSaved ? "Hold PRG: back" : "Mode not saved; hold back"); break;
     case Page::Notice:
       title("WiFi"); line(22, statusMessage); line(51, "Hold PRG: back"); break;
     case Page::Forget:
@@ -573,6 +638,10 @@ void drawScreen() {
       auto update = Ota::snapshot();
       if (update.phase != lastUpdatePhase) { updateActionSelected = false; lastUpdatePhase = update.phase; }
       title("Update system");
+      if (hotspotActive) {
+        line(15, "Hotspot: local only"); line(27, "Use WiFi for updates");
+        row(39, "Back", true); line(51, "Hold PRG: back"); break;
+      }
       if (update.phase == Ota::Phase::Available) {
         line(15, "Available: " + String(update.version));
         line(27, "Installed: " + String(Config::VERSION));
@@ -612,6 +681,15 @@ void setup() {
   WiFi.setHostname("heltec-os");
   WiFi.mode(WIFI_STA);
   storageReady = preferences.begin("heltec-os", false);
+  hotspotName = "HeltecChat-" + WiFi.macAddress().substring(12);
+  hotspotName.replace(":", "");
+  hotspotPassword = storageReady ? preferences.getString("hotspot-key", "") : "";
+  hotspotKeySaved = hotspotPassword.length() == 12;
+  if (hotspotPassword.length() != 12) {
+    hotspotPassword = randomHex(6);
+    hotspotKeySaved = storageReady && preferences.putString("hotspot-key", hotspotPassword) == hotspotPassword.length();
+  }
+  if (storageReady && preferences.getBool("hotspot", false) && !hotspotKeySaved) modeSaved = false;
   if (storageReady && preferences.getBytesLength("network") == sizeof(saved)) {
     preferences.getBytes("network", &saved, sizeof(saved));
     saved.ssid[32] = '\0';
@@ -626,7 +704,10 @@ void setup() {
     server.send(302, "text/plain", "Open WiFi setup.");
   });
   server.begin();
-  if (saved.ssid[0]) {
+  if (storageReady && preferences.getBool("hotspot", false)) {
+    setConnectionMode(true, false);
+    if (hotspotActive) page = Page::Boot;
+  } else if (saved.ssid[0]) {
     candidate = saved;
     startConnection(false);
     page = Page::Boot;
@@ -640,7 +721,7 @@ void loop() {
   pollButton();
   if (page == Page::Compose) composer.tick(millis(), stableButton == LOW || previousReading == LOW);
   pollScan();
-  Messages::tick(!portalActive && !connecting, Ota::snapshot().busy);
+  Messages::tick(NetworkAccess::select(portalActive, connecting, hotspotActive, WiFi.status() == WL_CONNECTED), Ota::snapshot().busy);
   server.handleClient();
   if (portalActive) {
     dns.processNextRequest();
