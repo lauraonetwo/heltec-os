@@ -1,0 +1,41 @@
+name: Build Heltec OS
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  firmware:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: arduino/setup-arduino-cli@v2
+        with:
+          version: '1.5.1'
+      - name: Install pinned board package and libraries
+        run: |
+          arduino-cli config init
+          arduino-cli config add board_manager.additional_urls https://resource.heltec.cn/download/package_heltec_esp32_index.json
+          arduino-cli core update-index
+          arduino-cli core install Heltec-esp32:esp32@3.3.8
+          arduino-cli lib update-index
+          arduino-cli lib install --no-deps 'Adafruit BusIO@1.17.4' 'Adafruit GFX Library@1.12.6' 'heltec-eink-modules@4.6.0' 'Heltec ESP32 Dev-Boards@2.1.6'
+      - name: Compile for Heltec V3
+        run: arduino-cli compile --fqbn Heltec-esp32:esp32:heltec_wifi_lora_32_V3 --build-path build/compile --output-dir build/output firmware/HeltecOS
+      - name: Check validator failure cases and firmware artifacts
+        run: |
+          python3 -m unittest discover -s scripts -p 'test_*.py'
+          python3 scripts/validate_build.py build/output
+      - uses: actions/upload-artifact@v4
+        with:
+          name: heltec-os-usb-development-build
+          path: |
+            build/output/*.bin
+            build/output/manifest.json
+            firmware/HeltecOS/partitions.csv
+          if-no-files-found: error

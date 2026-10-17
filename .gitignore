@@ -1,0 +1,10 @@
+build/
+.cache/
+*.bin
+*.elf
+*.map
+*.pem
+*.key
+secrets.h
+.env
+__pycache__/
