@@ -1,6 +1,6 @@
 #pragma once
 
-#define HELTEC_OS_VERSION "1.3.0"
+#define HELTEC_OS_VERSION "1.3.1"
 
 namespace Config {
 constexpr char VERSION[] = HELTEC_OS_VERSION;
