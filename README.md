@@ -10,6 +10,7 @@ bidirectional local messages with Morse light, and signed OTA updates from **lau
 - **Messages**: write Morse with PRG, read messages from your phone, open the phone page, or stop the LED.
 - **Update system**: check GitHub Releases, verify the release signature, confirm an available version, and install it over WiFi.
 - **About**: show the version, board, processor and flash size.
+- **@lauraonetwo**: open a large, right-scrolling banner bordered by swaying flowers. Hold and release PRG to return.
 
 Startup displays `hi user!`. Change `USER_NAME` in `firmware/HeltecOS/Config.h` to customize it.
 

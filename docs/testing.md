@@ -31,7 +31,8 @@ emulate the radio, PRG button, OLED or flash power-loss behavior.
 Perform these checks after the initial USB installation. They require a physical board and router;
 a successful compile alone does not establish that they have passed.
 
-- Boot: `hi user!`, followed by `WiFi`, `Messages`, `Update system`, `About` in a scrolling menu.
+- Boot: `hi user!`, followed by `WiFi`, `Messages`, `Update system`, `About`, `@lauraonetwo` in a scrolling menu.
+- Banner: open the last item and watch a complete loop. The handle should travel right between two animated flower borders. Hold and release PRG to return, then tap once to wrap to WiFi.
 - Messages: perform the [phone/board/LED checks](messages.md#hardware-acceptance-checks).
 - Button: short presses advance one item; a 0.7-second hold selects only on release. Holding for
   several seconds does not repeat. A button held during normal software startup causes no false selection.
