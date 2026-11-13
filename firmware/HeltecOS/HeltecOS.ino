@@ -24,7 +24,12 @@ Credentials saved;
 Credentials candidate;
 NetworkEntry networks[Config::MAX_NETWORKS];
 Page page = Page::Boot;
-const char *mainItems[] = {"WiFi", "Messages", "Update system", "About"};
+constexpr char bannerText[] = "@lauraonetwo";
+struct MenuEntry { const char *label; Page destination; };
+constexpr MenuEntry mainItems[] = {{"WiFi", Page::WiFiMenu}, {"Messages", Page::MessagesMenu},
+  {"Update system", Page::Update}, {"About", Page::About}, {bannerText, Page::FlowerBanner}};
+constexpr int mainItemCount = sizeof(mainItems) / sizeof(mainItems[0]);
+unsigned long bannerOpenedAt = 0;
 const char *messageItems[] = {"Compose", "Inbox", "Phone access", "Stop light", "Back"};
 const char *draftItems[] = {"Continue writing", "Add space", "Send + light", "Delete last", "Clear draft", "Back to Messages"};
 Morse::Composer composer;
@@ -366,7 +371,7 @@ void setConnectionMode(bool hotspot, bool persist) {
 
 void shortPress() {
   switch (page) {
-    case Page::Menu: mainSelection = (mainSelection + 1) % 4; break;
+    case Page::Menu: mainSelection = (mainSelection + 1) % mainItemCount; break;
     case Page::MessagesMenu: messageSelection = (messageSelection + 1) % 5; messageNotice = ""; break;
     case Page::DraftActions: draftSelection = (draftSelection + 1) % 6; messageNotice = ""; break;
     case Page::Inbox:
@@ -389,7 +394,8 @@ void longPress() {
   switch (page) {
     case Page::Boot: page = Page::Menu; break;
     case Page::Menu:
-      page = mainSelection == 0 ? Page::WiFiMenu : mainSelection == 1 ? Page::MessagesMenu : mainSelection == 2 ? Page::Update : Page::About;
+      page = mainItems[mainSelection].destination;
+      if (page == Page::FlowerBanner) bannerOpenedAt = millis();
       if (page == Page::Update) { updateActionSelected = false; if (!hotspotActive) Ota::check(); }
       break;
     case Page::MessagesMenu:
@@ -513,6 +519,38 @@ void row(int y, const String &text, bool selected) {
   oled.setColor(WHITE);
 }
 
+void drawBannerFlower(int baseX, int baseY, unsigned phase) {
+  constexpr int sway[] = {0, 1, 2, 1, 0, -1, -2, -1};
+  int x = baseX + sway[phase % 8], y = baseY - 9;
+  int spread = (phase % 8 < 4) ? 2 : 3;
+  oled.drawLine(baseX, baseY, x, y);
+  oled.drawLine(baseX, baseY - 2, baseX - 3, baseY - 4);
+  oled.drawCircle(x - spread, y, 2);
+  oled.drawCircle(x + spread, y, 2);
+  oled.drawCircle(x, y - spread, 2);
+  oled.drawCircle(x, y + spread, 2);
+  oled.setPixel(x, y);
+}
+
+void drawFlowerBanner() {
+  const unsigned long elapsed = millis() - bannerOpenedAt;
+  oled.clear();
+  oled.setColor(WHITE);
+  oled.setFont(ArialMT_Plain_24);
+  oled.setTextAlignment(TEXT_ALIGN_LEFT);
+  const int width = oled.getStringWidth(bannerText);
+  const int pitch = width + 24;
+  const int offset = (elapsed / 50) % pitch;
+  // Two copies leave a short gap as the preceding handle exits on the right.
+  if (offset < 128) oled.drawString(offset, 18, bannerText);
+  if (offset > 24) oled.drawString(offset - pitch, 18, bannerText);
+  for (int i = 0; i < 5; ++i) {
+    unsigned phase = (elapsed / 180 + i * 3) % 8;
+    drawBannerFlower(11 + i * 26, 15, phase);
+    drawBannerFlower(13 + i * 25, 63, phase + 4);
+  }
+}
+
 void drawScreen() {
   switch (page) {
     case Page::Boot:
@@ -524,8 +562,8 @@ void drawScreen() {
       break;
     case Page::Menu: {
       title("HELTEC OS v" + String(Config::VERSION));
-      int first = mainSelection < 3 ? 0 : 1;
-      for (int i = first; i < first + 3; ++i) row(15 + (i - first) * 12, mainItems[i], mainSelection == i);
+      int first = mainSelection < 3 ? 0 : mainSelection - 2;
+      for (int i = first; i < first + 3; ++i) row(15 + (i - first) * 12, mainItems[i].label, mainSelection == i);
       line(51, "Tap: next  Hold: select");
       break;
     }
@@ -659,6 +697,7 @@ void drawScreen() {
       }
       break;
     }
+    case Page::FlowerBanner: drawFlowerBanner(); break;
     case Page::About:
       title("About Heltec OS"); line(16, "Version " + String(Config::VERSION));
       line(28, "Heltec V3.2 / ESP32-S3");
